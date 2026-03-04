@@ -1,268 +1,180 @@
 #!/bin/bash
-# ============================================================
-#  NXC — Instalador Completo v1.2.16 (com todos os fixes)
-#  Baseado no XC_VM de Vateron-Media (AGPL v3.0)
-#  https://github.com/Vateron-Media/XC_VM
-# ============================================================
+# NXC - Instalador Completo v1.2.16
+# Baseado no XC_VM de Vateron-Media (AGPL v3.0)
 
-set -e
+set -o pipefail
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
+CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
+ok()   { echo -e "${GREEN}[OK]${NC}" $1; }
+info() { echo -e "${CYAN}[i]${NC}" $1; }
+warn() { echo -e "${YELLOW}[!]${NC}" $1; }
+err()  { echo -e "${RED}[ERRO]${NC}" $1; exit 1; }
+step() { echo -e "\n${BOLD}${CYAN}== $1 ==${NC}"; }
 
-# ── Cores ──
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-BOLD='\033[1m'
-NC='\033[0m'
-
-ok()   { echo -e "${GREEN}[✓]${NC} $1"; }
-info() { echo -e "${CYAN}[i]${NC} $1"; }
-warn() { echo -e "${YELLOW}[!]${NC} $1"; }
-err()  { echo -e "${RED}[✗]${NC} $1"; exit 1; }
-step() { echo -e "\n${BOLD}${CYAN}══ $1 ══${NC}"; }
-
-# ── Banner ──
 clear
-echo -e "${CYAN}"
-cat << 'EOF'
-  _   _  __  __  ____
- | \ | ||  \/  |/ ___|
- |  \| || |\/| | |
- | |\  || |  | | |___
- |_| \_||_|  |_|\____|
+echo '  _   _  __  __  ____'
+echo ' | \ | ||  \/  |/ ___|'
+echo ' |  \| || |\/| | |'
+echo ' | |\  || |  | | |___'
+echo ' |_| \_||_|  |_|\____|'
+echo '  NXC - Painel IPTV (XC_VM v1.2.16 + Fixes) | Licenca: AGPL v3.0'
+echo ''
 
-  NXC — Painel IPTV (XC_VM v1.2.16 + Fixes)
-  Licença: AGPL v3.0
-EOF
-echo -e "${NC}"
+step 'Verificando pre-requisitos'
+[[ $EUID -ne 0 ]] && err 'Execute como root: sudo bash instalar.sh'
 
-# ── Verificações iniciais ──
-step "Verificando pré-requisitos"
+OS_ID=$(lsb_release -si 2>/dev/null || echo '')
+OS_VER=$(lsb_release -sr 2>/dev/null || echo '')
+[[ "$OS_ID" != 'Ubuntu' ]] && warn "Sistema: $OS_ID $OS_VER (testado em Ubuntu 22.04)"
+ok "Ubuntu $OS_VER detectado"
 
-[[ $EUID -ne 0 ]] && err "Execute como root: sudo bash instalar.sh"
-
-OS_ID=$(lsb_release -si 2>/dev/null || echo "")
-OS_VER=$(lsb_release -sr 2>/dev/null || echo "")
-if [[ "$OS_ID" != "Ubuntu" ]]; then
-    warn "Sistema detectado: $OS_ID $OS_VER"
-    warn "NXC foi testado em Ubuntu 22.04 LTS. Outros sistemas podem ter problemas."
-    read -rp "Continuar mesmo assim? (s/N): " resp
-    [[ "$resp" != "s" && "$resp" != "S" ]] && exit 0
-else
-    ok "Ubuntu $OS_VER detectado"
-fi
-
-# Detectar hardware
 TOTAL_RAM_MB=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
-TOTAL_RAM_GB=$((TOTAL_RAM_MB / 1024))
+TOTAL_RAM_GB=$(($TOTAL_RAM_MB / 1024))
 CPU_COUNT=$(nproc)
-ok "CPU: ${CPU_COUNT} threads | RAM: ${TOTAL_RAM_GB} GB"
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+ok "CPU: ${CPU_COUNT} threads | RAM: ${TOTAL_RAM_GB} GB | Dir: $SCRIPT_DIR"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-info "Diretório do instalador: $SCRIPT_DIR"
+echo ''
+echo 'Este instalador ira:'
+echo '  - Instalar o NXC (XC_VM v1.2.16) em /home/xc_vm/'
+echo '  - Aplicar todos os fixes de producao (Redis, live.php, CoreUtilities, BD)'
+echo '  - Otimizar MariaDB, Nginx, PHP-FPM e kernel | Configurar UFW'
+echo ''
+read -rp 'Confirmar instalacao? (s/N): ' confirm
+[[ "$confirm" != 's' && "$confirm" != 'S' ]] && { info 'Cancelado.'; exit 0; }
 
-echo ""
-echo -e "${BOLD}Este instalador irá:${NC}"
-echo "  • Instalar o NXC (XC_VM v1.2.16) em /home/xc_vm/"
-echo "  • Aplicar todos os fixes de produção (Redis, live.php, CoreUtilities, conexões)"
-echo "  • Otimizar MariaDB, Nginx, PHP-FPM e parâmetros do kernel"
-echo "  • Configurar UFW (firewall)"
-echo ""
-read -rp "$(echo -e "${YELLOW}Confirmar instalação? (s/N):${NC} ")" confirm
-[[ "$confirm" != "s" && "$confirm" != "S" ]] && { info "Instalação cancelada."; exit 0; }
-
-# ── Fix GRUB (evita travar o apt) ──
-step "Corrigindo pacotes GRUB (se necessário)"
+step 'Corrigindo GRUB'
 apt-mark hold grub-efi-amd64 grub-efi-amd64-bin grub-efi-amd64-signed grub-common grub2-common shim-signed 2>/dev/null || true
 rm -f /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/cache/apt/archives/lock 2>/dev/null || true
 dpkg --configure -a --force-confdef --force-confold 2>/dev/null || true
-ok "GRUB verificado"
+ok 'GRUB OK'
 
-# ── Atualizar sistema ──
-step "Atualizando sistema"
+step 'Atualizando sistema'
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq
-apt-get full-upgrade -y -qq
+apt-get update -qq && apt-get full-upgrade -y -qq
 apt-get install -y -qq python3-pip unzip curl wget ufw
-ok "Sistema atualizado"
+ok 'Sistema atualizado'
 
-# ── Instalar XC_VM ──
-step "Instalando XC_VM v1.2.16"
-
-if [[ ! -f "$SCRIPT_DIR/XC_VM.zip" ]]; then
-    err "Arquivo XC_VM.zip não encontrado em $SCRIPT_DIR"
-fi
-
+step 'Instalando XC_VM v1.2.16'
+[[ ! -f "$SCRIPT_DIR/XC_VM.zip" ]] && err "XC_VM.zip nao encontrado em $SCRIPT_DIR"
 INSTALL_TMP=$(mktemp -d)
-info "Extraindo XC_VM.zip..."
+info 'Extraindo XC_VM.zip...'
 unzip -q "$SCRIPT_DIR/XC_VM.zip" -d "$INSTALL_TMP"
+XC_INSTALL_DIR=$(find "$INSTALL_TMP" -name 'install' -maxdepth 3 | head -1 | xargs dirname)
+[[ -z "$XC_INSTALL_DIR" ]] && err 'Arquivo install nao encontrado no zip'
+info 'Executando instalador oficial XC_VM...'
+cd "$XC_INSTALL_DIR" && printf "\n\n\nY\n" | python3 install && cd "$SCRIPT_DIR"
+ok 'XC_VM instalado em /home/xc_vm/'
+info 'Aguardando servicos (15s)...'; sleep 15
 
-# Encontrar o diretório de instalação
-XC_INSTALL_DIR=$(find "$INSTALL_TMP" -name "install" -maxdepth 3 | head -1 | xargs dirname)
-if [[ -z "$XC_INSTALL_DIR" ]]; then
-    err "Arquivo 'install' não encontrado dentro do XC_VM.zip"
-fi
+step 'Fix 4 - Redis server-threads (evita HTTP 500)'
+python3 "$SCRIPT_DIR/patches/fix_redis.py" && ok 'Redis: server-threads=1' || warn 'fix_redis.py com aviso'
 
-info "Executando instalador oficial XC_VM..."
-cd "$XC_INSTALL_DIR"
-echo -e "\n\n\nY" | python3 install
-cd "$SCRIPT_DIR"
-ok "XC_VM instalado em /home/xc_vm/"
-
-# Aguardar serviço iniciar
-info "Aguardando serviços iniciarem..."
-sleep 10
-
-# ── Fix #4: Redis / KeyDB ──
-step "Fix #4 — Redis server-threads (evita HTTP 500)"
-python3 "$SCRIPT_DIR/patches/fix_redis.py"
-ok "Redis corrigido (server-threads 1)"
-
-# ── Fix #1 e #2: live.php + CoreUtilities.php ──
-step "Fix #1 — live.php (loop infinito / CPU 100%)"
-LIVE_PHP_PATH="/home/xc_vm/www/stream/live.php"
-if [[ -f "$LIVE_PHP_PATH" ]]; then
-    cp "$LIVE_PHP_PATH" "${LIVE_PHP_PATH}.bak.$(date +%Y%m%d_%H%M%S)"
-    cp "$SCRIPT_DIR/patches/live.php" "$LIVE_PHP_PATH"
-    chown xc_vm:xc_vm "$LIVE_PHP_PATH"
-    ok "live.php atualizado com fix do loop infinito"
+step 'Fix 1 - live.php (loop infinito / CPU 100%)'
+LIVE_PHP='/home/xc_vm/www/stream/live.php'
+if [[ -f "$LIVE_PHP" ]]; then
+    cp "$LIVE_PHP" "${LIVE_PHP}.bak.$(date +%Y%m%d_%H%M%S)"
+    python3 "$SCRIPT_DIR/patches/apply_fix1.py" && ok 'live.php: fix aplicado' || warn 'live.php: verificar manualmente'
 else
-    warn "live.php não encontrado em $LIVE_PHP_PATH — pulando fix #1"
+    warn "live.php nao encontrado em $LIVE_PHP"
 fi
 
-step "Fix #2 — CoreUtilities.php (startup lento M3U8)"
-CORE_PHP_PATH="/home/xc_vm/streaming/CoreUtilities.php"
-if [[ -f "$CORE_PHP_PATH" ]]; then
-    cp "$CORE_PHP_PATH" "${CORE_PHP_PATH}.bak.$(date +%Y%m%d_%H%M%S)"
-    cp "$SCRIPT_DIR/patches/CoreUtilities.php" "$CORE_PHP_PATH"
-    chown xc_vm:xc_vm "$CORE_PHP_PATH"
-    ok "CoreUtilities.php atualizado (stream_max_analyze dinâmico)"
+step 'Fix 2 - CoreUtilities.php (startup lento M3U8)'
+CORE_PHP='/home/xc_vm/streaming/CoreUtilities.php'
+if [[ -f "$CORE_PHP" ]]; then
+    cp "$CORE_PHP" "${CORE_PHP}.bak.$(date +%Y%m%d_%H%M%S)"
+    python3 "$SCRIPT_DIR/patches/apply_fix2.py" && ok 'CoreUtilities.php: fix aplicado' || warn 'CoreUtilities: verificar manualmente'
 else
-    warn "CoreUtilities.php não encontrado em $CORE_PHP_PATH — pulando fix #2"
+    warn "CoreUtilities.php nao encontrado em $CORE_PHP"
 fi
 
-# ── Fix #3: Conexões fantasma ──
-step "Fix #3 — Limpar conexões fantasma no banco"
-DB_CMD="mariadb --defaults-file=/etc/mysql/debian.cnf xc_vm"
-$DB_CMD -e "UPDATE lines_live SET hls_end=1 WHERE hls_end=0 AND (hls_last_read IS NULL OR hls_last_read < UNIX_TIMESTAMP()-300);" 2>/dev/null && \
-    ok "Conexões fantasma limpas" || \
-    warn "Não foi possível executar fix #3 (banco pode ainda não estar pronto)"
+step 'Fix 3 - Conexoes fantasma no banco'
+if mariadb --defaults-file=/etc/mysql/debian.cnf xc_vm -e 'SELECT 1;' >/dev/null 2>&1; then
+    mariadb --defaults-file=/etc/mysql/debian.cnf xc_vm -e \
+        'UPDATE lines_live SET hls_end=1 WHERE hls_end=0 AND (hls_last_read IS NULL OR hls_last_read < UNIX_TIMESTAMP()-300);' 2>/dev/null
+    ok 'Conexoes fantasma limpas'
+else
+    warn 'Banco nao pronto - fix 3 aplicar depois'
+fi
 
-# ── Otimizar MariaDB ──
 step "Otimizando MariaDB (RAM: ${TOTAL_RAM_GB}GB)"
-BUFFER_POOL_GB=$(( TOTAL_RAM_GB * 55 / 100 ))
-[[ $BUFFER_POOL_GB -lt 1 ]] && BUFFER_POOL_GB=1
-BUFFER_INSTANCES=$(( CPU_COUNT > 64 ? 64 : CPU_COUNT ))
-[[ $BUFFER_INSTANCES -lt 1 ]] && BUFFER_INSTANCES=1
-
-sed \
-    -e "s/{{BUFFER_POOL}}/${BUFFER_POOL_GB}G/g" \
-    -e "s/{{BUFFER_INSTANCES}}/${BUFFER_INSTANCES}/g" \
+BUFFER_GB=$(( TOTAL_RAM_GB * 55 / 100 )); [[ $BUFFER_GB -lt 1 ]] && BUFFER_GB=1
+INSTANCES=$(( CPU_COUNT > 64 ? 64 : CPU_COUNT )); [[ $INSTANCES -lt 1 ]] && INSTANCES=1
+sed -e "s/{{BUFFER_POOL}}/${BUFFER_GB}G/g" \
+    -e "s/{{BUFFER_INSTANCES}}/${INSTANCES}/g" \
     -e "s/{{THREAD_POOL}}/${CPU_COUNT}/g" \
     "$SCRIPT_DIR/configs/mariadb.cnf.template" > /etc/mysql/mariadb.conf.d/99-nxc.cnf
+ok "MariaDB: buffer=${BUFFER_GB}GB threads=${CPU_COUNT}"
 
-ok "MariaDB: buffer_pool=${BUFFER_POOL_GB}GB, threads=${CPU_COUNT}"
-
-# ── Otimizar Nginx ──
-step "Otimizando Nginx"
-NGINX_CONF="/home/xc_vm/bin/nginx/conf/nginx.conf"
+step 'Otimizando Nginx (apenas parametros - NAO substitui nginx.conf)'
+NGINX_CONF='/home/xc_vm/bin/nginx/conf/nginx.conf'
 if [[ -f "$NGINX_CONF" ]]; then
     cp "$NGINX_CONF" "${NGINX_CONF}.bak.$(date +%Y%m%d_%H%M%S)"
-    sed \
-        -e "s/{{CPU_COUNT}}/${CPU_COUNT}/g" \
-        "$SCRIPT_DIR/configs/nginx.conf.template" > "$NGINX_CONF"
-    ok "Nginx: ${CPU_COUNT} workers"
-else
-    warn "nginx.conf não encontrado — usando configuração padrão"
-fi
-
-# ── Sysctl / Kernel ──
-step "Aplicando parâmetros de kernel"
-cp "$SCRIPT_DIR/configs/sysctl.conf" /etc/sysctl.d/99-nxc.conf
-/sbin/sysctl -p /etc/sysctl.d/99-nxc.conf -q
-ok "Parâmetros de rede aplicados"
-
-# ── Limites do sistema ──
-step "Configurando limites de file descriptors"
-cp "$SCRIPT_DIR/configs/limits.conf" /etc/security/limits.d/99-nxc.conf
-ok "Limites: 1M file descriptors para root e xc_vm"
-
-# ── PHP-FPM: rlimit_files ──
-step "Otimizando PHP-FPM"
-for pool_conf in /home/xc_vm/bin/php/etc/{1,2,3,4}.conf; do
-    if [[ -f "$pool_conf" ]]; then
-        if grep -q "rlimit_files" "$pool_conf"; then
-            sed -i "s/rlimit_files = [0-9]*/rlimit_files = 65535/" "$pool_conf"
-        else
-            echo "rlimit_files = 65535" >> "$pool_conf"
-        fi
-        if grep -q "request_terminate_timeout" "$pool_conf"; then
-            sed -i "s/request_terminate_timeout = .*/request_terminate_timeout = 1800/" "$pool_conf"
-        else
-            echo "request_terminate_timeout = 1800" >> "$pool_conf"
-        fi
+    sed -i 's/^worker_processes[[:space:]]\+[^;]*;/worker_processes  auto;/' "$NGINX_CONF"
+    if grep -q 'worker_rlimit_nofile' "$NGINX_CONF"; then
+        sed -i 's/worker_rlimit_nofile[[:space:]]\+[0-9]*;/worker_rlimit_nofile 300000;/' "$NGINX_CONF"
+    else
+        sed -i '/^worker_processes/a worker_rlimit_nofile 300000;' "$NGINX_CONF"
     fi
-done
-ok "PHP-FPM: rlimit_files=65535, request_terminate_timeout=1800"
-
-# ── KeyDB tcp-backlog ──
-step "Otimizando KeyDB"
-KEYDB_CONF="/home/xc_vm/bin/redis/redis.conf"
-if [[ -f "$KEYDB_CONF" ]]; then
-    sed -i "s/tcp-backlog [0-9]*/tcp-backlog 65535/" "$KEYDB_CONF"
-    ok "KeyDB: tcp-backlog=65535"
+    ok 'Nginx: worker_processes=auto rlimit=300000'
+else
+    warn 'nginx.conf nao encontrado'
 fi
 
-# ── Firewall UFW ──
-step "Configurando UFW (firewall)"
+step 'Parametros de kernel'
+cp "$SCRIPT_DIR/configs/sysctl.conf" /etc/sysctl.d/99-nxc.conf
+/sbin/sysctl -p /etc/sysctl.d/99-nxc.conf -q 2>/dev/null || true
+ok 'Sysctl aplicado'
+
+step 'File descriptors (1M)'
+cp "$SCRIPT_DIR/configs/limits.conf" /etc/security/limits.d/99-nxc.conf
+ok 'Limites: 1M FDs'
+
+step 'Otimizando PHP-FPM'
+for p in /home/xc_vm/bin/php/etc/{1,2,3,4}.conf; do
+    [[ ! -f "$p" ]] && continue
+    grep -q 'rlimit_files' "$p" \
+        && sed -i 's/rlimit_files = [0-9]*/rlimit_files = 65535/' "$p" \
+        || echo 'rlimit_files = 65535' >> "$p"
+    grep -q 'request_terminate_timeout' "$p" \
+        && sed -i 's/request_terminate_timeout = .*/request_terminate_timeout = 1800/' "$p" \
+        || echo 'request_terminate_timeout = 1800' >> "$p"
+done
+ok 'PHP-FPM: rlimit=65535 timeout=1800'
+
+step 'KeyDB tcp-backlog'
+KC='/home/xc_vm/bin/redis/redis.conf'
+[[ -f "$KC" ]] && sed -i 's/tcp-backlog [0-9]*/tcp-backlog 65535/' "$KC" && ok 'KeyDB: tcp-backlog=65535' || true
+
+step 'UFW Firewall'
 ufw --force reset >/dev/null 2>&1
-ufw default deny incoming >/dev/null 2>&1
-ufw default allow outgoing >/dev/null 2>&1
-ufw allow 22/tcp comment 'SSH' >/dev/null 2>&1
-ufw allow 80/tcp comment 'HTTP' >/dev/null 2>&1
-ufw allow 443/tcp comment 'HTTPS' >/dev/null 2>&1
-ufw allow 25461/tcp comment 'NXC API' >/dev/null 2>&1
-ufw allow 25462/tcp comment 'NXC RTMP' >/dev/null 2>&1
-echo "y" | ufw enable >/dev/null 2>&1
-ok "UFW ativo: portas 22, 80, 443, 25461, 25462 abertas"
+ufw default deny incoming >/dev/null 2>&1; ufw default allow outgoing >/dev/null 2>&1
+ufw allow 22/tcp comment 'SSH' >/dev/null 2>&1; ufw allow 80/tcp comment 'HTTP' >/dev/null 2>&1
+ufw allow 443/tcp comment 'HTTPS' >/dev/null 2>&1; ufw allow 25461/tcp comment 'NXC API' >/dev/null 2>&1
+ufw allow 25462/tcp comment 'NXC RTMP' >/dev/null 2>&1; echo 'y' | ufw enable >/dev/null 2>&1
+ok 'UFW: 22 80 443 25461 25462'
 
-# ── Reiniciar tudo ──
-step "Reiniciando serviços"
+step 'Reiniciando servicos'
 systemctl daemon-reload
-systemctl restart mariadb
-sleep 3
-systemctl restart xc_vm
-sleep 5
-/home/xc_vm/bin/nginx/sbin/nginx -s reload 2>/dev/null || true
-ok "Serviços reiniciados"
+systemctl restart mariadb 2>/dev/null || true; sleep 5
+systemctl restart xc_vm 2>/dev/null || true; sleep 8
+ok 'Servicos reiniciados'
 
-# ── Limpeza ──
-rm -rf "$INSTALL_TMP"
+rm -rf "$INSTALL_TMP" 2>/dev/null || true
 
-# ── Verificação final ──
-step "Verificação final"
-bash "$SCRIPT_DIR/scripts/healthcheck.sh" 2>/dev/null || true
-
-# ── URL de acesso ──
-echo ""
-echo -e "${GREEN}${BOLD}╔══════════════════════════════════════════════════╗"
-echo -e "║          NXC INSTALADO COM SUCESSO!              ║"
-echo -e "╚══════════════════════════════════════════════════╝${NC}"
-echo ""
-
+step 'Verificacao final'
+systemctl is-active xc_vm >/dev/null && echo '  xc_vm:   ATIVO' || echo '  xc_vm:   INATIVO'
+systemctl is-active mariadb >/dev/null && echo '  mariadb: ATIVO' || echo '  mariadb: INATIVO'
+ss -tlnp | grep -E ':80|:443|:3306|:6379' 2>/dev/null || true
+echo ''
+echo '=============================================='
+echo '     NXC INSTALADO COM SUCESSO!'
+echo '=============================================='
 SERVER_IP=$(hostname -I | awk '{print $1}')
 ACCESS_URL=$(/home/xc_vm/tools access 2>/dev/null | grep -oP 'http[s]?://[^\s]+' | head -1 || echo "http://$SERVER_IP/")
-
-echo -e "  ${BOLD}URL de acesso:${NC}   ${CYAN}$ACCESS_URL${NC}"
-echo -e "  ${BOLD}Servidor IP:${NC}     ${CYAN}$SERVER_IP${NC}"
-echo ""
-echo -e "  ${YELLOW}Para criar conta admin:${NC}"
-echo -e "  ${BOLD}/home/xc_vm/tools user${NC}"
-echo ""
-echo -e "  ${YELLOW}Para diagnóstico:${NC}"
-echo -e "  ${BOLD}bash $SCRIPT_DIR/scripts/healthcheck.sh${NC}"
-echo ""
-echo -e "  ${YELLOW}Credenciais MariaDB:${NC}"
-CREDS_FILE=$(find /root -name "credentials.txt" 2>/dev/null | head -1)
-[[ -n "$CREDS_FILE" ]] && echo -e "  ${BOLD}cat $CREDS_FILE${NC}" || echo -e "  Arquivo de credenciais não encontrado."
-echo ""
+echo "  URL de acesso:  $ACCESS_URL"
+echo "  IP do servidor: $SERVER_IP"
+echo '  Criar conta admin: /home/xc_vm/tools user'
+CREDS=$(find /root -name 'credentials.txt' 2>/dev/null | head -1)
+[[ -n "$CREDS" ]] && echo "  MariaDB credenciais: cat $CREDS" || true
+echo ''
