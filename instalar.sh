@@ -184,6 +184,10 @@ ACCESS_URL=$(/home/xc_vm/tools access 2>/dev/null | grep -oP 'http[s]?://[^\s]+'
 echo "  URL de acesso:  $ACCESS_URL"
 echo "  IP do servidor: $SERVER_IP"
 echo '  Criar conta admin: /home/xc_vm/tools user'
-CREDS=$(find /root -name 'credentials.txt' 2>/dev/null | head -1)
-[[ -n "$CREDS" ]] && echo "  MariaDB credenciais: cat $CREDS" || true
+# Credenciais do banco ficam em config.ini (nao no credentials.txt que e deletado)
+DB_USER=$(grep 'username' /home/xc_vm/config/config.ini 2>/dev/null | awk -F'"' '{print $2}')
+DB_PASS=$(grep 'password' /home/xc_vm/config/config.ini 2>/dev/null | awk -F'"' '{print $2}')
+[[ -n "$DB_USER" ]] && echo "  MariaDB user:    $DB_USER" || true
+[[ -n "$DB_PASS" ]] && echo "  MariaDB pass:    $DB_PASS" || true
+echo '  Config DB:       /home/xc_vm/config/config.ini'
 echo ''
