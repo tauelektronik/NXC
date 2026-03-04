@@ -57,6 +57,16 @@ ok 'Sistema atualizado'
 
 step 'Instalando XC_VM v1.2.16'
 [[ ! -f "$SCRIPT_DIR/XC_VM.zip" ]] && err "XC_VM.zip nao encontrado em $SCRIPT_DIR"
+# Verificar se e arquivo LFS pointer (nao o zip real)
+if file "$SCRIPT_DIR/XC_VM.zip" | grep -q 'ASCII text'; then
+    warn 'XC_VM.zip e um ponteiro Git LFS. Baixando arquivo real...'
+    apt-get install -y -qq git-lfs 2>/dev/null || true
+    cd "$SCRIPT_DIR" && git lfs pull 2>/dev/null || true
+    cd "$SCRIPT_DIR"
+    file "$SCRIPT_DIR/XC_VM.zip" | grep -q 'ASCII text' && \
+        err "Falha ao baixar XC_VM.zip via Git LFS. Execute: apt install git-lfs && git lfs pull"
+    ok 'Git LFS: XC_VM.zip baixado com sucesso'
+fi
 INSTALL_TMP=$(mktemp -d)
 info 'Extraindo XC_VM.zip...'
 unzip -q "$SCRIPT_DIR/XC_VM.zip" -d "$INSTALL_TMP"
