@@ -133,12 +133,11 @@ ok 'Limites: 1M FDs'
 step 'Otimizando PHP-FPM'
 for p in /home/xc_vm/bin/php/etc/{1,2,3,4}.conf; do
     [[ ! -f "$p" ]] && continue
-    grep -q 'rlimit_files' "$p" \
-        && sed -i 's/rlimit_files = [0-9]*/rlimit_files = 65535/' "$p" \
-        || echo 'rlimit_files = 65535' >> "$p"
-    grep -q 'request_terminate_timeout' "$p" \
-        && sed -i 's/request_terminate_timeout = .*/request_terminate_timeout = 1800/' "$p" \
-        || echo 'request_terminate_timeout = 1800' >> "$p"
+    # Remover entradas existentes para evitar duplicatas/corrupcao
+    sed -i '/^rlimit_files/d' "$p"
+    sed -i '/^request_terminate_timeout/d' "$p"
+    # Adicionar com newline garantido no inicio (evita concatenar na ultima linha)
+    printf '\nrlimit_files = 65535\nrequest_terminate_timeout = 1800\n' >> "$p"
 done
 ok 'PHP-FPM: rlimit=65535 timeout=1800'
 
