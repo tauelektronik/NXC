@@ -58,36 +58,26 @@
 
 ## Instalação
 
-### Passo 1 — Clonar o repositório no servidor
+### 1 comando (copiar e colar no servidor como root)
 
 ```bash
-# Instale git-lfs primeiro (necessário para os binários)
-apt-get install -y git git-lfs
-
-# Clonar o repositório
-git clone https://github.com/SEU_USUARIO/NXC.git
-cd NXC
-git lfs pull
+apt install -y git git-lfs && git clone https://github.com/tauelektronik/NXC.git && cd NXC && git lfs pull && bash instalar.sh
 ```
 
-### Passo 2 — Executar o instalador
-
-```bash
-sudo bash instalar.sh
-```
+> **Atenção:** Execute como `root` em um servidor Ubuntu 22.04 LTS limpo.
 
 O instalador irá:
 1. Verificar o sistema (Ubuntu 22.04 + root)
 2. Atualizar pacotes do sistema
-3. Instalar o XC_VM v1.2.16
-4. Aplicar todos os 4 fixes de produção automaticamente
+3. Baixar e instalar o XC_VM v1.2.16
+4. Aplicar todos os fixes de produção automaticamente
 5. Otimizar MariaDB, Nginx, PHP-FPM e parâmetros de kernel
 6. Configurar o firewall (UFW)
-7. Exibir a URL de acesso ao painel
+7. Exibir a URL de acesso e credenciais do banco
 
-**Tempo estimado:** 10–20 minutos (depende da velocidade do servidor)
+**Tempo estimado:** 10–20 minutos
 
-### Passo 3 — Criar conta administrador
+### Criar conta administrador
 
 Após a instalação, execute:
 
