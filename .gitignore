@@ -1,0 +1,20 @@
+# Backups gerados pelo instalador
+*.bak.*
+*.pre_update
+
+# Temporários
+*.tmp
+*.log
+__pycache__/
+*.pyc
+
+# Credenciais (nunca commitar)
+credentials.txt
+*.env
+config.ini
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db

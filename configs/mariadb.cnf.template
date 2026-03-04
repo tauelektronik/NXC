@@ -1,0 +1,57 @@
+# NXC — MariaDB Otimizado
+# Gerado automaticamente pelo instalar.sh
+# {{BUFFER_POOL}} = 55% da RAM total
+# {{BUFFER_INSTANCES}} = número de CPUs (máx 64)
+# {{THREAD_POOL}} = número de CPUs
+
+[mysqld]
+# ── Conexões ──
+max_connections                 = 10000
+back_log                        = 500
+max_connect_errors              = 10000
+max_allowed_packet              = 64M
+wait_timeout                    = 600
+interactive_timeout             = 600
+
+# ── Cache de tabelas ──
+open_files_limit                = 65535
+innodb_open_files               = 65535
+table_open_cache                = 8192
+table_definition_cache          = 8192
+
+# ── Memória temporária ──
+tmp_table_size                  = 256M
+max_heap_table_size             = 256M
+sort_buffer_size                = 4M
+join_buffer_size                = 4M
+read_buffer_size                = 2M
+read_rnd_buffer_size            = 8M
+
+# ── InnoDB — Buffer Pool (coração do MariaDB) ──
+innodb_buffer_pool_size         = {{BUFFER_POOL}}
+innodb_buffer_pool_instances    = {{BUFFER_INSTANCES}}
+innodb_buffer_pool_load_at_startup  = 1
+innodb_buffer_pool_dump_at_shutdown = 1
+
+# ── InnoDB — I/O ──
+innodb_read_io_threads          = 16
+innodb_write_io_threads         = 16
+innodb_io_capacity              = 4000
+innodb_io_capacity_max          = 8000
+innodb_flush_log_at_trx_commit  = 2
+innodb_flush_method             = O_DIRECT
+innodb_log_buffer_size          = 64M
+innodb_log_file_size            = 512M
+
+# ── Thread pool ──
+thread_cache_size               = 200
+thread_pool_size                = {{THREAD_POOL}}
+thread_pool_max_threads         = 2000
+
+# ── Query cache (desabilitado — causa lock em alta concorrência) ──
+query_cache_type                = 0
+query_cache_size                = 0
+
+# ── Logs ──
+slow_query_log                  = 0
+general_log                     = 0

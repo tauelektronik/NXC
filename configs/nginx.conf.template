@@ -1,0 +1,54 @@
+# NXC — Nginx Otimizado
+# {{CPU_COUNT}} substituído automaticamente pelo instalar.sh
+
+user xc_vm;
+worker_processes  {{CPU_COUNT}};
+worker_rlimit_nofile 300000;
+
+thread_pool pool_xc_vm threads={{CPU_COUNT}} max_queue=0;
+
+error_log  logs/error.log warn;
+pid        logs/nginx.pid;
+
+events {
+    worker_connections  16000;
+    use epoll;
+    accept_mutex off;
+    multi_accept on;
+}
+
+http {
+    include       mime.types;
+    default_type  application/octet-stream;
+
+    # ── Performance ──
+    sendfile           on;
+    tcp_nopush         on;
+    tcp_nodelay        on;
+    keepalive_timeout  65;
+    keepalive_requests 10000;
+
+    # ── Buffer sizes ──
+    client_body_buffer_size     128k;
+    client_max_body_size        100m;
+    client_header_buffer_size   1k;
+    large_client_header_buffers 4 16k;
+    output_buffers              1 32k;
+    postpone_output             1460;
+
+    # ── Timeouts ──
+    client_header_timeout  30s;
+    client_body_timeout    30s;
+    send_timeout           30s;
+
+    # ── Logging ──
+    access_log off;
+
+    # ── Gzip ──
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1000;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml;
+
+    include /home/xc_vm/bin/nginx/conf/vhosts/*.conf;
+}
