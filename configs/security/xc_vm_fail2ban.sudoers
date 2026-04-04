@@ -1,0 +1,1 @@
+xc_vm ALL=(ALL) NOPASSWD: /usr/bin/fail2ban-client, /usr/bin/systemctl start fail2ban, /usr/bin/systemctl stop fail2ban, /usr/bin/systemctl restart fail2ban, /usr/bin/systemctl is-active fail2ban, /usr/bin/grep, /usr/bin/cp /tmp/jail_new.conf /etc/fail2ban/jail.local

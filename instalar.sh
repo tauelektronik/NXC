@@ -166,13 +166,74 @@ if [[ -f "$KC" ]]; then
     ok 'KeyDB: tcp-backlog=65535 maxclients=655350'
 fi
 
+step 'Timezone Sao Paulo'
+timedatectl set-timezone America/Sao_Paulo 2>/dev/null || true
+timedatectl set-ntp true 2>/dev/null || true
+ok "Timezone: America/Sao_Paulo"
+
+step 'Portal MAG (Ministra/Stalker)'
+if [[ -d /home/xc_vm/ministra ]] && [[ ! -e /home/xc_vm/www/c ]]; then
+    ln -sf /home/xc_vm/ministra /home/xc_vm/www/c
+    ok 'Portal /c/ criado (symlink para ministra)'
+elif [[ -e /home/xc_vm/www/c ]]; then
+    ok 'Portal /c/ ja existe'
+else
+    warn 'Pasta ministra nao encontrada'
+fi
+
+step 'Habilitando MAG e Enigma2'
+if [[ -f "$SCRIPT_DIR/patches/sql/setup_mag_enigma.sql" ]]; then
+    mariadb -u root xc_vm < "$SCRIPT_DIR/patches/sql/setup_mag_enigma.sql" 2>/dev/null
+    ok 'MAG + Enigma2 + Cloudflare habilitados'
+fi
+
+step 'Instalando Fail2Ban'
+apt-get install -y -qq fail2ban 2>/dev/null
+cp "$SCRIPT_DIR/configs/security/jail.local" /etc/fail2ban/jail.local
+systemctl enable fail2ban 2>/dev/null || true
+systemctl restart fail2ban 2>/dev/null || true
+ok 'Fail2Ban instalado e ativo'
+
+step 'Fail2Ban - Painel Admin'
+if [[ -f "$SCRIPT_DIR/admin/fail2ban.php" ]]; then
+    cp "$SCRIPT_DIR/admin/fail2ban.php" /home/xc_vm/admin/fail2ban.php
+    chown xc_vm:xc_vm /home/xc_vm/admin/fail2ban.php
+    ok 'fail2ban.php instalado no painel'
+fi
+# Sudoers para xc_vm executar fail2ban-client
+cp "$SCRIPT_DIR/configs/security/xc_vm_fail2ban.sudoers" /etc/sudoers.d/xc_vm_fail2ban
+chmod 440 /etc/sudoers.d/xc_vm_fail2ban
+ok 'Sudoers configurado'
+
+step 'Fail2Ban - Aba no Settings'
+if [[ -f "$SCRIPT_DIR/patches/admin/add_fail2ban_tab.py" ]]; then
+    python3 "$SCRIPT_DIR/patches/admin/add_fail2ban_tab.py" && ok 'Aba Fail2Ban adicionada ao Settings' || warn 'Verificar aba manualmente'
+fi
+
+step 'SSH - Porta 2288'
+if grep -q '^Port 22$' /etc/ssh/sshd_config 2>/dev/null || grep -q '^#Port 22' /etc/ssh/sshd_config 2>/dev/null; then
+    cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak
+    sed -i 's/^#Port 22$/Port 2288/' /etc/ssh/sshd_config
+    sed -i 's/^Port 22$/Port 2288/' /etc/ssh/sshd_config
+    if ! grep -q '^Port 2288' /etc/ssh/sshd_config; then
+        echo 'Port 2288' >> /etc/ssh/sshd_config
+    fi
+    # Atualizar jail.local com porta correta
+    sed -i 's/^port = .*/port = 2288/' /etc/fail2ban/jail.local
+    systemctl restart sshd 2>/dev/null || true
+    systemctl restart fail2ban 2>/dev/null || true
+    ok 'SSH movido para porta 2288'
+else
+    ok 'SSH ja configurado'
+fi
+
 step 'UFW Firewall'
 ufw --force reset >/dev/null 2>&1
 ufw default deny incoming >/dev/null 2>&1; ufw default allow outgoing >/dev/null 2>&1
-ufw allow 22/tcp comment 'SSH' >/dev/null 2>&1; ufw allow 80/tcp comment 'HTTP' >/dev/null 2>&1
+ufw allow 2288/tcp comment 'SSH' >/dev/null 2>&1; ufw allow 80/tcp comment 'HTTP' >/dev/null 2>&1
 ufw allow 443/tcp comment 'HTTPS' >/dev/null 2>&1; ufw allow 25461/tcp comment 'NXC API' >/dev/null 2>&1
 ufw allow 25462/tcp comment 'NXC RTMP' >/dev/null 2>&1; echo 'y' | ufw enable >/dev/null 2>&1
-ok 'UFW: 22 80 443 25461 25462'
+ok 'UFW: 2288 80 443 25461 25462'
 
 step 'Systemd: LimitNOFILE e LimitNPROC'
 SVC_FILE='/etc/systemd/system/xc_vm.service'
@@ -208,10 +269,19 @@ ACCESS_URL=$(/home/xc_vm/tools access 2>/dev/null | grep -oP 'http[s]?://[^\s]+'
 echo "  URL de acesso:  $ACCESS_URL"
 echo "  IP do servidor: $SERVER_IP"
 echo '  Criar conta admin: /home/xc_vm/tools user'
-# Credenciais do banco ficam em config.ini (nao no credentials.txt que e deletado)
 DB_USER=$(grep 'username' /home/xc_vm/config/config.ini 2>/dev/null | awk -F'"' '{print $2}')
 DB_PASS=$(grep 'password' /home/xc_vm/config/config.ini 2>/dev/null | awk -F'"' '{print $2}')
 [[ -n "$DB_USER" ]] && echo "  MariaDB user:    $DB_USER" || true
 [[ -n "$DB_PASS" ]] && echo "  MariaDB pass:    $DB_PASS" || true
 echo '  Config DB:       /home/xc_vm/config/config.ini'
+echo ''
+echo '  SEGURANCA:'
+echo '  SSH:         porta 2288 (nao mais 22!)'
+echo '  Fail2Ban:    ativo (ban 24h apos 3 tentativas)'
+echo '  Painel:      Settings > Fail2Ban'
+echo '  Portal MAG:  http://'$SERVER_IP'/c/'
+echo '  Timezone:    America/Sao_Paulo'
+echo ''
+echo '  IMPORTANTE: Para conectar via SSH use:'
+echo "  ssh root@$SERVER_IP -p 2288"
 echo ''
