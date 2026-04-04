@@ -66,6 +66,31 @@ fi
 pool_ok=$(grep -l "request_terminate_timeout" /home/xc_vm/bin/php/etc/*.conf 2>/dev/null | wc -l)
 echo "  PHP-FPM request_terminate_timeout: $pool_ok/4 pools"
 
+# PHP-FPM rlimit_files
+rlimit_val=$(grep "rlimit_files" /home/xc_vm/bin/php/etc/1.conf 2>/dev/null | awk '{print $NF}')
+if [ "$rlimit_val" = "65535" ]; then
+    echo "  PHP-FPM rlimit_files: OK ($rlimit_val)"
+elif [ "$rlimit_val" = "4000" ]; then
+    echo "  PHP-FPM rlimit_files: ALERTA - apenas $rlimit_val (deveria ser 65535)!"
+else
+    echo "  PHP-FPM rlimit_files: $rlimit_val"
+fi
+
+# BBR
+bbr_val=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null)
+if [ "$bbr_val" = "bbr" ]; then
+    echo "  BBR congestion control: OK"
+else
+    echo "  BBR congestion control: ALERTA - usando $bbr_val (deveria ser bbr)"
+fi
+
+# Systemd limits
+if grep -q "LimitNOFILE=1000000" /etc/systemd/system/xc_vm.service 2>/dev/null; then
+    echo "  Systemd LimitNOFILE: OK (1M)"
+else
+    echo "  Systemd LimitNOFILE: ALERTA - nao configurado!"
+fi
+
 echo ""
 echo "=== [5] BANCO DE DADOS ==="
 echo "  Conexoes abertas (lines_live):"

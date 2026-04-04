@@ -77,8 +77,37 @@ for conf in /home/xc_vm/bin/php/etc/{1,2,3,4}.conf; do
 done
 
 echo ""
+echo "=== CORRIGINDO PHP-FPM rlimit_files ==="
+for conf in /home/xc_vm/bin/php/etc/{1,2,3,4}.conf; do
+    [[ ! -f "$conf" ]] && continue
+    sed -i '/^rlimit_files/d' "$conf"
+    printf '\nrlimit_files = 65535\n' >> "$conf"
+    echo "rlimit_files=65535 em $conf"
+done
+
+echo ""
+echo "=== FIX Redis server-threads ==="
+KC='/home/xc_vm/bin/redis/redis.conf'
+if [[ -f "$KC" ]]; then
+    redis_val=$(grep "^server-threads" "$KC" | awk '{print $2}')
+    if [ "$redis_val" = "4" ]; then
+        sed -i '/^server-threads/d' "$KC"
+        sed -i '/^server-thread-affinity/d' "$KC"
+        echo 'server-threads 1' >> "$KC"
+        echo "Redis: server-threads corrigido para 1"
+    else
+        echo "Redis: OK (server-threads=$redis_val)"
+    fi
+fi
+
+echo ""
+echo "=== FIX orphans no banco ==="
+mariadb xc_vm -e "UPDATE lines_live SET hls_end=1 WHERE hls_end=0 AND (hls_last_read IS NULL OR hls_last_read < UNIX_TIMESTAMP()-300);" 2>/dev/null
+echo "Orphans limpos"
+
+echo ""
 echo "=== VERIFICANDO POOLS ==="
-grep -E "request_terminate_timeout|pm\.process_idle_timeout" /home/xc_vm/bin/php/etc/*.conf
+grep -E "request_terminate_timeout|rlimit_files" /home/xc_vm/bin/php/etc/*.conf
 
 echo ""
 echo "=== REINICIANDO PHP-FPM (reload gracioso) ==="
@@ -97,4 +126,6 @@ ps aux | grep php-fpm | grep " R " | grep -v grep | wc -l
 echo ""
 echo "CORRECAO CONCLUIDA!"
 echo "- live.php: loop infinito corrigido (break quando stream morto)"
-echo "- PHP-FPM: request_terminate_timeout=1800 adicionado como safety net"
+echo "- PHP-FPM: request_terminate_timeout=1800 + rlimit_files=65535"
+echo "- Redis: server-threads verificado"
+echo "- Orphans: conexoes fantasma limpas"

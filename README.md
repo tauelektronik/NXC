@@ -106,10 +106,7 @@ O Load Balancer distribui o tráfego de streaming para um segundo servidor, libe
 ### No servidor LB (Ubuntu 22.04):
 
 ```bash
-git clone https://github.com/SEU_USUARIO/NXC.git
-cd NXC
-git lfs pull
-sudo bash instalar_lb.sh
+apt install -y git git-lfs && git clone https://github.com/tauelektronik/NXC.git && cd NXC && git lfs pull && bash instalar_lb.sh
 ```
 
 ### No painel NXC:

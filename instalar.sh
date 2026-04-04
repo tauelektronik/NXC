@@ -126,7 +126,11 @@ if [[ -f "$NGINX_CONF" ]]; then
     else
         sed -i '/^worker_processes/a worker_rlimit_nofile 300000;' "$NGINX_CONF"
     fi
-    ok 'Nginx: worker_processes=auto rlimit=300000'
+    # Ajustar thread_pool para o numero de CPUs do servidor
+    if grep -q 'thread_pool pool_xc_vm' "$NGINX_CONF"; then
+        sed -i "s/thread_pool pool_xc_vm threads=[0-9]*/thread_pool pool_xc_vm threads=${CPU_COUNT}/" "$NGINX_CONF"
+    fi
+    ok "Nginx: worker_processes=auto rlimit=300000 threads=${CPU_COUNT}"
 else
     warn 'nginx.conf nao encontrado'
 fi
@@ -153,7 +157,14 @@ ok 'PHP-FPM: rlimit=65535 timeout=1800'
 
 step 'KeyDB tcp-backlog'
 KC='/home/xc_vm/bin/redis/redis.conf'
-[[ -f "$KC" ]] && sed -i 's/tcp-backlog [0-9]*/tcp-backlog 65535/' "$KC" && ok 'KeyDB: tcp-backlog=65535' || true
+if [[ -f "$KC" ]]; then
+    sed -i 's/tcp-backlog [0-9]*/tcp-backlog 65535/' "$KC"
+    # Garantir maxclients alto
+    if grep -q 'maxclients' "$KC"; then
+        sed -i 's/maxclients [0-9]*/maxclients 655350/' "$KC"
+    fi
+    ok 'KeyDB: tcp-backlog=65535 maxclients=655350'
+fi
 
 step 'UFW Firewall'
 ufw --force reset >/dev/null 2>&1
@@ -162,6 +173,19 @@ ufw allow 22/tcp comment 'SSH' >/dev/null 2>&1; ufw allow 80/tcp comment 'HTTP' 
 ufw allow 443/tcp comment 'HTTPS' >/dev/null 2>&1; ufw allow 25461/tcp comment 'NXC API' >/dev/null 2>&1
 ufw allow 25462/tcp comment 'NXC RTMP' >/dev/null 2>&1; echo 'y' | ufw enable >/dev/null 2>&1
 ok 'UFW: 22 80 443 25461 25462'
+
+step 'Systemd: LimitNOFILE e LimitNPROC'
+SVC_FILE='/etc/systemd/system/xc_vm.service'
+if [[ -f "$SVC_FILE" ]]; then
+    if ! grep -q 'LimitNOFILE=1000000' "$SVC_FILE"; then
+        sed -i '/\[Service\]/a LimitNOFILE=1000000\nLimitNPROC=1000000' "$SVC_FILE"
+        ok 'Systemd: LimitNOFILE=1M LimitNPROC=1M'
+    else
+        ok 'Systemd: limits ja configurados'
+    fi
+else
+    warn 'xc_vm.service nao encontrado'
+fi
 
 step 'Reiniciando servicos'
 systemctl daemon-reload
